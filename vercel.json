@@ -1,0 +1,22 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "api/index.py",
+      "use": "@vercel/python",
+      "config": {
+        "maxLambdaSize": "50mb",
+        "includeFiles": ["model.pkl", "public/index.html"]
+      }
+    }
+  ],
+  "routes": [
+    { "src": "/predict",           "dest": "/api/index.py" },
+    { "src": "/health",            "dest": "/api/index.py" },
+    { "src": "/city-tier/(.*)",    "dest": "/api/index.py" },
+    { "src": "/docs",              "dest": "/api/index.py" },
+    { "src": "/redoc",             "dest": "/api/index.py" },
+    { "src": "/openapi.json",      "dest": "/api/index.py" },
+    { "src": "/(.*)",              "dest": "/api/index.py" }
+  ]
+}

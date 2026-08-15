@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+.eggs/
+dist/
+build/
+.venv/
+venv/
+env/
+.env
+
+# Jupyter / dev notebooks
+*.ipynb
+.ipynb_checkpoints/
+
+# Data (not needed in image)
+*.csv
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Old frontend
+frontend.py
+main.py
+
+# Logs
+*.log
