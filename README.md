@@ -38,7 +38,7 @@ uvicorn app:app --reload --port 8000
 ### 3. Open in browser
 
 ```
-https://insureiq-9zpyyr3ah-operapoint86-1507s-projects.vercel.app/
+'https://insureiq-9zpyyr3ah-operapoint86-1507s-projects.vercel.app/'
 ```
 
 > The frontend is served automatically at `/`. API docs are at `/docs`.
