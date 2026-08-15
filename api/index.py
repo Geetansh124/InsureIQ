@@ -7,47 +7,1037 @@ import pickle
 import pandas as pd
 import os
 
-# ── Resolve paths (this file lives in api/, model.pkl is one level up) ─────────
 _HERE = os.path.dirname(os.path.abspath(__file__))
-_ROOT = os.path.dirname(_HERE)  # project root
+_ROOT = os.path.dirname(_HERE)
 
-with open(os.path.join(_ROOT, "model.pkl"), "rb") as f:
-    model = pickle.load(f)
+with open(os.path.join(_ROOT, "model.pkl"), "rb") as _f:
+    model = pickle.load(_f)
 
-# Read frontend HTML once at cold-start
-_FRONTEND_PATH = os.path.join(_ROOT, "public", "index.html")
-with open(_FRONTEND_PATH, "r", encoding="utf-8") as _f:
-    _FRONTEND_HTML = _f.read()
+# HTML inlined — no filesystem dependency on Vercel
+_FRONTEND_HTML = """<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>InsureIQ — AI Insurance Premium Predictor</title>
+  <meta name="description" content="Get an instant AI-powered prediction of your insurance premium category. Fast, accurate, and built on real data." />
 
-# ── App ─────────────────────────────────────────────────────────────────────────
-app = FastAPI(
-    title="Insurance Premium Predictor",
-    description="Predict insurance premium category using ML",
-    version="1.0.0",
-)
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
 
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+
+  <style>
+    /* ─── Reset & Base ─────────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      background: #06060f;
+      color: #e2e8f0;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ─── Animated Aurora Background ───────────────────────────────────────── */
+    .aurora {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      overflow: hidden;
+      pointer-events: none;
+    }
+    .aurora-orb {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(80px);
+      opacity: 0.18;
+      animation: drift 18s ease-in-out infinite alternate;
+    }
+    .orb1 { width: 700px; height: 700px; background: radial-gradient(circle, #6366f1, transparent); top: -200px; left: -200px; animation-duration: 20s; }
+    .orb2 { width: 500px; height: 500px; background: radial-gradient(circle, #8b5cf6, transparent); bottom: -100px; right: -100px; animation-duration: 25s; animation-delay: -8s; }
+    .orb3 { width: 400px; height: 400px; background: radial-gradient(circle, #0ea5e9, transparent); top: 40%; left: 60%; animation-duration: 22s; animation-delay: -5s; }
+    .orb4 { width: 300px; height: 300px; background: radial-gradient(circle, #ec4899, transparent); top: 60%; left: 10%; animation-duration: 28s; animation-delay: -12s; opacity: 0.10; }
+
+    @keyframes drift {
+      0%   { transform: translate(0, 0) scale(1); }
+      33%  { transform: translate(40px, -30px) scale(1.05); }
+      66%  { transform: translate(-20px, 20px) scale(0.97); }
+      100% { transform: translate(30px, 40px) scale(1.03); }
+    }
+
+    /* Grid overlay */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(99,102,241,0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(99,102,241,0.04) 1px, transparent 1px);
+      background-size: 50px 50px;
+      z-index: 0;
+      pointer-events: none;
+    }
+
+    /* ─── Layout ────────────────────────────────────────────────────────────── */
+    .page-wrapper {
+      position: relative;
+      z-index: 1;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ─── Header / Nav ──────────────────────────────────────────────────────── */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 20px 40px;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      background: rgba(6,6,15,0.6);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 800;
+      font-size: 1.3rem;
+      letter-spacing: -0.5px;
+    }
+    .logo-icon {
+      width: 36px; height: 36px;
+      background: linear-gradient(135deg, #6366f1, #8b5cf6);
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.1rem;
+      box-shadow: 0 0 20px rgba(99,102,241,0.4);
+    }
+    .logo-text span { color: #818cf8; }
+    .badge-api {
+      padding: 4px 12px;
+      background: rgba(99,102,241,0.15);
+      border: 1px solid rgba(99,102,241,0.3);
+      border-radius: 20px;
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: #818cf8;
+      letter-spacing: 0.5px;
+    }
+
+    /* ─── Hero ──────────────────────────────────────────────────────────────── */
+    .hero {
+      text-align: center;
+      padding: 70px 20px 40px;
+    }
+    .hero-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(99,102,241,0.12);
+      border: 1px solid rgba(99,102,241,0.25);
+      border-radius: 30px;
+      padding: 6px 16px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: #a5b4fc;
+      margin-bottom: 28px;
+      letter-spacing: 0.3px;
+    }
+    .hero-pill::before { content: '✦'; font-size: 0.65rem; }
+    .hero h1 {
+      font-size: clamp(2.2rem, 5vw, 3.6rem);
+      font-weight: 900;
+      letter-spacing: -2px;
+      line-height: 1.1;
+      margin-bottom: 18px;
+      background: linear-gradient(135deg, #fff 30%, #818cf8 70%, #c084fc);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .hero p {
+      font-size: 1.1rem;
+      color: #94a3b8;
+      max-width: 540px;
+      margin: 0 auto;
+      line-height: 1.6;
+    }
+
+    /* ─── Main Grid ─────────────────────────────────────────────────────────── */
+    .main-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 28px;
+      max-width: 1100px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 0 28px 80px;
+    }
+
+    /* ─── Glass Card ────────────────────────────────────────────────────────── */
+    .glass-card {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 24px;
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      padding: 36px;
+      transition: border-color 0.3s, box-shadow 0.3s;
+    }
+    .glass-card:hover {
+      border-color: rgba(99,102,241,0.2);
+      box-shadow: 0 0 40px rgba(99,102,241,0.06);
+    }
+    .card-title {
+      font-size: 0.8rem;
+      font-weight: 700;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+      color: #6366f1;
+      margin-bottom: 24px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .card-title::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: rgba(99,102,241,0.2);
+    }
+
+    /* ─── Form Inputs ───────────────────────────────────────────────────────── */
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .form-group { margin-bottom: 20px; }
+    .form-group label {
+      display: block;
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: #94a3b8;
+      margin-bottom: 8px;
+      letter-spacing: 0.3px;
+    }
+
+    input, select {
+      width: 100%;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 12px;
+      padding: 12px 16px;
+      font-size: 0.95rem;
+      font-family: 'Inter', sans-serif;
+      color: #e2e8f0;
+      outline: none;
+      transition: border-color 0.25s, box-shadow 0.25s, background 0.25s;
+      -webkit-appearance: none;
+      appearance: none;
+    }
+    input:focus, select:focus {
+      border-color: #6366f1;
+      background: rgba(99,102,241,0.08);
+      box-shadow: 0 0 0 3px rgba(99,102,241,0.15);
+    }
+    input::placeholder { color: #475569; }
+
+    select {
+      cursor: pointer;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%236366f1' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 12px center;
+      background-size: 18px;
+      padding-right: 40px;
+    }
+    select option { background: #1e1b4b; color: #e2e8f0; }
+
+    /* City input wrapper */
+    .city-wrapper { position: relative; }
+    .city-tier-badge {
+      position: absolute;
+      right: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      padding: 3px 10px;
+      border-radius: 20px;
+      font-size: 0.68rem;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      pointer-events: none;
+      transition: all 0.3s;
+      opacity: 0;
+    }
+    .city-tier-badge.show { opacity: 1; }
+    .tier-1 { background: rgba(16,185,129,0.2); border: 1px solid rgba(16,185,129,0.4); color: #34d399; }
+    .tier-2 { background: rgba(245,158,11,0.2); border: 1px solid rgba(245,158,11,0.4); color: #fbbf24; }
+    .tier-3 { background: rgba(148,163,184,0.15); border: 1px solid rgba(148,163,184,0.3); color: #94a3b8; }
+
+    /* Toggle for smoker */
+    .toggle-group {
+      display: flex;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .toggle-btn {
+      flex: 1;
+      padding: 12px;
+      text-align: center;
+      cursor: pointer;
+      font-size: 0.88rem;
+      font-weight: 600;
+      color: #64748b;
+      transition: all 0.25s;
+      user-select: none;
+      border: none;
+      background: transparent;
+      font-family: 'Inter', sans-serif;
+    }
+    .toggle-btn.active {
+      background: linear-gradient(135deg, rgba(99,102,241,0.3), rgba(139,92,246,0.3));
+      color: #e2e8f0;
+    }
+    .toggle-btn.active.yes { color: #f87171; }
+    .toggle-btn.active.no  { color: #34d399; }
+
+    /* ─── Live BMI Display ──────────────────────────────────────────────────── */
+    .bmi-display {
+      background: rgba(99,102,241,0.08);
+      border: 1px solid rgba(99,102,241,0.2);
+      border-radius: 14px;
+      padding: 16px 20px;
+      margin-bottom: 24px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      transition: all 0.3s;
+    }
+    .bmi-value {
+      font-size: 2rem;
+      font-weight: 800;
+      letter-spacing: -1px;
+      background: linear-gradient(135deg, #818cf8, #c084fc);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      min-width: 70px;
+    }
+    .bmi-info { flex: 1; }
+    .bmi-label {
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #6366f1;
+      margin-bottom: 2px;
+    }
+    .bmi-category {
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: #e2e8f0;
+    }
+    .bmi-bar-track {
+      width: 100%;
+      height: 4px;
+      background: rgba(255,255,255,0.08);
+      border-radius: 4px;
+      margin-top: 6px;
+      overflow: hidden;
+    }
+    .bmi-bar-fill {
+      height: 100%;
+      border-radius: 4px;
+      background: linear-gradient(90deg, #818cf8, #c084fc);
+      transition: width 0.4s ease;
+    }
+
+    /* ─── Submit Button ─────────────────────────────────────────────────────── */
+    .btn-predict {
+      width: 100%;
+      padding: 16px;
+      border: none;
+      border-radius: 14px;
+      font-size: 1rem;
+      font-weight: 700;
+      font-family: 'Inter', sans-serif;
+      cursor: pointer;
+      background: linear-gradient(135deg, #6366f1, #8b5cf6);
+      color: #fff;
+      position: relative;
+      overflow: hidden;
+      transition: transform 0.2s, box-shadow 0.2s;
+      box-shadow: 0 4px 24px rgba(99,102,241,0.35);
+      letter-spacing: 0.3px;
+    }
+    .btn-predict::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, rgba(255,255,255,0.15), transparent);
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+    .btn-predict:hover { transform: translateY(-2px); box-shadow: 0 8px 32px rgba(99,102,241,0.5); }
+    .btn-predict:hover::before { opacity: 1; }
+    .btn-predict:active { transform: translateY(0); }
+    .btn-predict:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+    .btn-predict .spinner {
+      display: none;
+      width: 20px; height: 20px;
+      border: 2.5px solid rgba(255,255,255,0.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      margin: 0 auto;
+    }
+    .btn-predict.loading .btn-text { display: none; }
+    .btn-predict.loading .spinner { display: block; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ─── Results Panel ─────────────────────────────────────────────────────── */
+    .results-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    /* placeholder state */
+    .results-placeholder {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 60px 20px;
+      gap: 16px;
+      color: #334155;
+    }
+    .results-placeholder .placeholder-icon {
+      width: 72px; height: 72px;
+      background: rgba(99,102,241,0.07);
+      border-radius: 20px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 2rem;
+      margin-bottom: 8px;
+    }
+    .results-placeholder p { font-size: 0.9rem; line-height: 1.5; max-width: 220px; }
+
+    /* result cards */
+    .result-block { display: none; }
+    .result-block.visible { display: flex; flex-direction: column; gap: 20px; animation: fadeSlideIn 0.5s ease; }
+
+    @keyframes fadeSlideIn {
+      from { opacity: 0; transform: translateY(16px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Category card */
+    .category-card {
+      border-radius: 18px;
+      padding: 28px 28px 24px;
+      position: relative;
+      overflow: hidden;
+      border: 1px solid;
+    }
+    .category-card::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      opacity: 0.08;
+    }
+    .category-card.low    { border-color: rgba(16,185,129,0.3);  background: rgba(16,185,129,0.07);  }
+    .category-card.medium { border-color: rgba(245,158,11,0.3);  background: rgba(245,158,11,0.07);  }
+    .category-card.high   { border-color: rgba(239,68,68,0.3);   background: rgba(239,68,68,0.07);   }
+    .category-card.ultra  { border-color: rgba(220,38,38,0.4);   background: rgba(220,38,38,0.09);   }
+    .category-card.default{ border-color: rgba(99,102,241,0.3);  background: rgba(99,102,241,0.07);  }
+
+    .cat-eyebrow {
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1.2px;
+      margin-bottom: 8px;
+    }
+    .cat-label {
+      font-size: 2rem;
+      font-weight: 900;
+      letter-spacing: -1px;
+      margin-bottom: 4px;
+    }
+    .category-card.low    .cat-label, .category-card.low    .cat-eyebrow { color: #34d399; }
+    .category-card.medium .cat-label, .category-card.medium .cat-eyebrow { color: #fbbf24; }
+    .category-card.high   .cat-label, .category-card.high   .cat-eyebrow { color: #f87171; }
+    .category-card.ultra  .cat-label, .category-card.ultra  .cat-eyebrow { color: #fca5a5; }
+    .category-card.default .cat-label, .category-card.default .cat-eyebrow { color: #818cf8; }
+
+    .cat-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .meta-chip {
+      padding: 4px 12px;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 20px;
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: #94a3b8;
+    }
+
+    /* Confidence meter */
+    .confidence-card { padding: 22px 26px; }
+    .conf-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      margin-bottom: 12px;
+    }
+    .conf-title { font-size: 0.78rem; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.8px; }
+    .conf-value { font-size: 1.6rem; font-weight: 800; color: #e2e8f0; letter-spacing: -1px; }
+    .conf-track {
+      width: 100%; height: 8px;
+      background: rgba(255,255,255,0.08);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .conf-fill {
+      height: 100%;
+      border-radius: 8px;
+      background: linear-gradient(90deg, #6366f1, #8b5cf6, #c084fc);
+      width: 0%;
+      transition: width 1s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    /* Probabilities chart */
+    .chart-card { padding: 22px 26px; }
+    .chart-title { font-size: 0.78rem; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 16px; }
+    .chart-container { position: relative; height: 180px; }
+
+    /* Computed values */
+    .computed-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    .computed-item {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.07);
+      border-radius: 12px;
+      padding: 12px 14px;
+    }
+    .computed-item-label { font-size: 0.67rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: #475569; margin-bottom: 4px; }
+    .computed-item-value { font-size: 0.92rem; font-weight: 700; color: #a5b4fc; }
+
+    /* Error message */
+    .error-msg {
+      display: none;
+      background: rgba(239,68,68,0.1);
+      border: 1px solid rgba(239,68,68,0.25);
+      border-radius: 12px;
+      padding: 14px 18px;
+      font-size: 0.88rem;
+      color: #fca5a5;
+      margin-top: 12px;
+    }
+    .error-msg.show { display: block; animation: fadeSlideIn 0.3s ease; }
+
+    /* ─── Footer ────────────────────────────────────────────────────────────── */
+    footer {
+      text-align: center;
+      padding: 32px;
+      font-size: 0.78rem;
+      color: #334155;
+      border-top: 1px solid rgba(255,255,255,0.05);
+      margin-top: auto;
+    }
+    footer a { color: #6366f1; text-decoration: none; }
+    footer a:hover { text-decoration: underline; }
+
+    /* ─── Responsive ────────────────────────────────────────────────────────── */
+    @media (max-width: 780px) {
+      header { padding: 16px 20px; }
+      .hero { padding: 50px 20px 30px; }
+      .hero h1 { letter-spacing: -1.5px; }
+      .main-grid { grid-template-columns: 1fr; padding: 0 16px 60px; }
+      .form-row { grid-template-columns: 1fr; }
+      .glass-card { padding: 24px 20px; }
+    }
+    @media (max-width: 480px) {
+      .computed-grid { grid-template-columns: 1fr; }
+      .bmi-value { font-size: 1.6rem; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Aurora background -->
+<div class="aurora">
+  <div class="aurora-orb orb1"></div>
+  <div class="aurora-orb orb2"></div>
+  <div class="aurora-orb orb3"></div>
+  <div class="aurora-orb orb4"></div>
+</div>
+
+<div class="page-wrapper">
+
+  <!-- ── Header ─────────────────────────────────────────────────────────────── -->
+  <header>
+    <div class="logo">
+      <div class="logo-icon">🛡️</div>
+      <div class="logo-text">Insure<span>IQ</span></div>
+    </div>
+    <span class="badge-api">POWERED BY AI</span>
+  </header>
+
+  <!-- ── Hero ───────────────────────────────────────────────────────────────── -->
+  <section class="hero">
+    <div class="hero-pill">AI-Powered Insurance Analysis</div>
+    <h1>Know Your Premium<br/>Before You Buy</h1>
+    <p>Enter your details and get an instant, machine-learning powered prediction of your insurance premium category — with confidence scores.</p>
+  </section>
+
+  <!-- ── Main Content ───────────────────────────────────────────────────────── -->
+  <main class="main-grid">
+
+    <!-- ── Form Card ────────────────────────────────────────────────────────── -->
+    <div class="glass-card">
+      <div class="card-title">Your Details</div>
+
+      <!-- Live BMI -->
+      <div class="bmi-display" id="bmiDisplay">
+        <div class="bmi-value" id="bmiValue">—</div>
+        <div class="bmi-info">
+          <div class="bmi-label">Live BMI</div>
+          <div class="bmi-category" id="bmiCategory">Enter weight & height</div>
+          <div class="bmi-bar-track">
+            <div class="bmi-bar-fill" id="bmiBarFill" style="width:0%"></div>
+          </div>
+        </div>
+      </div>
+
+      <form id="predictForm" autocomplete="off">
+        <!-- Row 1: Age + Income -->
+        <div class="form-row">
+          <div class="form-group">
+            <label for="age">Age (years)</label>
+            <input type="number" id="age" name="age" min="1" max="119" placeholder="30" required />
+          </div>
+          <div class="form-group">
+            <label for="income_lpa">Annual Income (LPA)</label>
+            <input type="number" id="income_lpa" name="income_lpa" min="0.1" step="0.1" placeholder="10.0" required />
+          </div>
+        </div>
+
+        <!-- Row 2: Weight + Height -->
+        <div class="form-row">
+          <div class="form-group">
+            <label for="weight">Weight (kg)</label>
+            <input type="number" id="weight" name="weight" min="1" step="0.1" placeholder="65.0" required />
+          </div>
+          <div class="form-group">
+            <label for="height">Height (m)</label>
+            <input type="number" id="height" name="height" min="0.5" max="2.5" step="0.01" placeholder="1.70" required />
+          </div>
+        </div>
+
+        <!-- City -->
+        <div class="form-group">
+          <label for="city">City</label>
+          <div class="city-wrapper">
+            <input type="text" id="city" name="city" placeholder="e.g. Mumbai, Jaipur, Kochi…" list="cityList" required />
+            <span class="city-tier-badge" id="cityTierBadge"></span>
+          </div>
+          <datalist id="cityList">
+            <option value="Mumbai"><option value="Delhi"><option value="Bangalore">
+            <option value="Chennai"><option value="Kolkata"><option value="Hyderabad">
+            <option value="Pune"><option value="Jaipur"><option value="Chandigarh">
+            <option value="Indore"><option value="Lucknow"><option value="Patna">
+            <option value="Ranchi"><option value="Visakhapatnam"><option value="Coimbatore">
+            <option value="Bhopal"><option value="Nagpur"><option value="Vadodara">
+            <option value="Surat"><option value="Rajkot"><option value="Jodhpur">
+            <option value="Raipur"><option value="Amritsar"><option value="Varanasi">
+            <option value="Agra"><option value="Dehradun"><option value="Mysore">
+            <option value="Jabalpur"><option value="Guwahati"><option value="Thiruvananthapuram">
+            <option value="Ludhiana"><option value="Nashik"><option value="Allahabad">
+            <option value="Udaipur"><option value="Noida"><option value="Vijayawada">
+          </datalist>
+        </div>
+
+        <!-- Occupation -->
+        <div class="form-group">
+          <label for="occupation">Occupation</label>
+          <select id="occupation" name="occupation" required>
+            <option value="" disabled selected>Select your occupation…</option>
+            <option value="private_job">Private Job</option>
+            <option value="government_job">Government Job</option>
+            <option value="business_owner">Business Owner</option>
+            <option value="freelancer">Freelancer</option>
+            <option value="student">Student</option>
+            <option value="retired">Retired</option>
+            <option value="unemployed">Unemployed</option>
+          </select>
+        </div>
+
+        <!-- Smoker toggle -->
+        <div class="form-group">
+          <label>Do you smoke?</label>
+          <div class="toggle-group">
+            <button type="button" class="toggle-btn yes" id="smokerYes" onclick="setSmoker(true)">🚬 Yes</button>
+            <button type="button" class="toggle-btn no active" id="smokerNo" onclick="setSmoker(false)">✅ No</button>
+          </div>
+        </div>
+
+        <button type="submit" class="btn-predict" id="submitBtn">
+          <span class="btn-text">✦ Predict Premium Category</span>
+          <span class="spinner"></span>
+        </button>
+
+        <div class="error-msg" id="errorMsg"></div>
+      </form>
+    </div>
+
+    <!-- ── Results Card ──────────────────────────────────────────────────────── -->
+    <div class="glass-card results-panel">
+      <div class="card-title">Prediction Results</div>
+
+      <!-- Placeholder -->
+      <div class="results-placeholder" id="resultsPlaceholder">
+        <div class="placeholder-icon">🤖</div>
+        <h3 style="font-size:1rem;font-weight:700;color:#475569;margin-bottom:4px;">Awaiting Input</h3>
+        <p>Fill in your details and click Predict to see your insurance premium category.</p>
+      </div>
+
+      <!-- Actual results -->
+      <div class="result-block" id="resultBlock">
+
+        <!-- Category -->
+        <div class="category-card default" id="categoryCard">
+          <div class="cat-eyebrow" id="catEyebrow">Premium Category</div>
+          <div class="cat-label" id="catLabel">—</div>
+          <div class="cat-meta" id="catMeta"></div>
+        </div>
+
+        <!-- Confidence -->
+        <div class="glass-card confidence-card" style="padding:22px 26px;">
+          <div class="conf-header">
+            <span class="conf-title">Model Confidence</span>
+            <span class="conf-value" id="confValue">0%</span>
+          </div>
+          <div class="conf-track">
+            <div class="conf-fill" id="confFill"></div>
+          </div>
+        </div>
+
+        <!-- Probabilities chart -->
+        <div class="glass-card chart-card" style="padding:22px 26px;">
+          <div class="chart-title">Class Probabilities</div>
+          <div class="chart-container">
+            <canvas id="probChart"></canvas>
+          </div>
+        </div>
+
+        <!-- Computed features -->
+        <div class="glass-card" style="padding:20px 24px;">
+          <div class="card-title" style="margin-bottom:16px;">Computed Features</div>
+          <div class="computed-grid" id="computedGrid"></div>
+        </div>
+
+      </div>
+    </div>
+
+  </main>
+
+  <footer>
+    Built with <a href="https://fastapi.tiangolo.com" target="_blank">FastAPI</a> &amp;
+    <a href="https://scikit-learn.org" target="_blank">scikit-learn</a> &mdash; InsureIQ &copy; 2026
+    &nbsp;|&nbsp; <a href="/docs" target="_blank">API Docs</a>
+  </footer>
+
+</div><!-- page-wrapper -->
+
+<script>
+  /* ─── State ──────────────────────────────────────────────────────────────── */
+  let smokerValue = false;
+  let probChartInstance = null;
+
+  const tier1 = ["Mumbai","Delhi","Bangalore","Chennai","Kolkata","Hyderabad","Pune"];
+  const tier2 = ["Jaipur","Chandigarh","Indore","Lucknow","Patna","Ranchi","Visakhapatnam","Coimbatore","Bhopal","Nagpur","Vadodara","Surat","Rajkot","Jodhpur","Raipur","Amritsar","Varanasi","Agra","Dehradun","Mysore","Jabalpur","Guwahati","Thiruvananthapuram","Ludhiana","Nashik","Allahabad","Udaipur","Aurangabad","Hubli","Belgaum","Salem","Vijayawada","Tiruchirappalli","Bhavnagar","Gwalior","Dhanbad","Bareilly","Aligarh","Gaya","Kozhikode","Warangal","Kolhapur","Bilaspur","Jalandhar","Noida","Guntur","Asansol","Siliguri"];
+
+  /* ─── Smoker toggle ──────────────────────────────────────────────────────── */
+  function setSmoker(val) {
+    smokerValue = val;
+    document.getElementById('smokerYes').classList.toggle('active', val);
+    document.getElementById('smokerNo').classList.toggle('active', !val);
+    updateBMI();
+  }
+
+  /* ─── Live BMI ───────────────────────────────────────────────────────────── */
+  function updateBMI() {
+    const w = parseFloat(document.getElementById('weight').value);
+    const h = parseFloat(document.getElementById('height').value);
+    const bmiEl = document.getElementById('bmiValue');
+    const catEl = document.getElementById('bmiCategory');
+    const barEl = document.getElementById('bmiBarFill');
+
+    if (!w || !h || h <= 0) {
+      bmiEl.textContent = '—';
+      catEl.textContent = 'Enter weight & height';
+      barEl.style.width = '0%';
+      return;
+    }
+
+    const bmi = w / (h * h);
+    bmiEl.textContent = bmi.toFixed(1);
+
+    let cat, pct;
+    if (bmi < 18.5)      { cat = 'Underweight'; pct = 15; }
+    else if (bmi < 25)   { cat = 'Normal Weight'; pct = 35; }
+    else if (bmi < 30)   { cat = 'Overweight'; pct = 60; }
+    else                 { cat = 'Obese'; pct = 90; }
+
+    catEl.textContent = cat;
+    barEl.style.width = Math.min(pct, 100) + '%';
+  }
+
+  document.getElementById('weight').addEventListener('input', updateBMI);
+  document.getElementById('height').addEventListener('input', updateBMI);
+
+  /* ─── City tier badge ────────────────────────────────────────────────────── */
+  document.getElementById('city').addEventListener('input', function () {
+    const city = this.value.trim();
+    const badge = document.getElementById('cityTierBadge');
+
+    if (!city) { badge.className = 'city-tier-badge'; return; }
+
+    let tier, cls, label;
+    if (tier1.includes(city))      { tier = 1; cls = 'tier-1'; label = 'Tier 1'; }
+    else if (tier2.includes(city)) { tier = 2; cls = 'tier-2'; label = 'Tier 2'; }
+    else                           { tier = 3; cls = 'tier-3'; label = 'Tier 3'; }
+
+    badge.textContent = label;
+    badge.className = `city-tier-badge ${cls} show`;
+  });
+
+  /* ─── Form submission ────────────────────────────────────────────────────── */
+  document.getElementById('predictForm').addEventListener('submit', async function (e) {
+    e.preventDefault();
+    await runPrediction();
+  });
+
+  async function runPrediction() {
+    const btn = document.getElementById('submitBtn');
+    const errEl = document.getElementById('errorMsg');
+    errEl.classList.remove('show');
+    btn.classList.add('loading');
+    btn.disabled = true;
+
+    const payload = {
+      age:         parseInt(document.getElementById('age').value),
+      weight:      parseFloat(document.getElementById('weight').value),
+      height:      parseFloat(document.getElementById('height').value),
+      income_lpa:  parseFloat(document.getElementById('income_lpa').value),
+      smoker:      smokerValue,
+      city:        document.getElementById('city').value.trim(),
+      occupation:  document.getElementById('occupation').value,
+    };
+
+    try {
+      const res = await fetch('/predict', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || `Server error ${res.status}`);
+      }
+
+      const data = await res.json();
+      renderResult(data.response);
+    } catch (err) {
+      errEl.textContent = '⚠️ ' + (err.message || 'Could not connect to the server.');
+      errEl.classList.add('show');
+    } finally {
+      btn.classList.remove('loading');
+      btn.disabled = false;
+    }
+  }
+
+  /* ─── Render results ─────────────────────────────────────────────────────── */
+  function renderResult(result) {
+    const { predicted_category, confidence, class_probabilities, computed } = result;
+
+    // Hide placeholder, show block
+    document.getElementById('resultsPlaceholder').style.display = 'none';
+    const block = document.getElementById('resultBlock');
+    block.classList.remove('visible');
+    void block.offsetWidth; // reflow for re-animation
+    block.classList.add('visible');
+
+    // Category card
+    const card = document.getElementById('categoryCard');
+    const rawCat = predicted_category.toLowerCase();
+    let colorClass = 'default';
+    if (rawCat.includes('low'))        colorClass = 'low';
+    else if (rawCat.includes('medium'))colorClass = 'medium';
+    else if (rawCat.includes('high'))  colorClass = 'high';
+    else if (rawCat.includes('ultra')) colorClass = 'ultra';
+
+    card.className = `category-card ${colorClass}`;
+    document.getElementById('catEyebrow').textContent = 'Premium Category';
+    document.getElementById('catLabel').textContent = predicted_category;
+
+    // Meta chips
+    const metaEl = document.getElementById('catMeta');
+    metaEl.innerHTML = '';
+    if (computed) {
+      const chips = [
+        { k: 'BMI', v: computed.bmi.toFixed(1) },
+        { k: 'Age Group', v: computed.age_group.replace('_', ' ') },
+        { k: 'Lifestyle Risk', v: computed.lifestyle_risk },
+        { k: 'City Tier', v: 'Tier ' + computed.city_tier },
+      ];
+      chips.forEach(c => {
+        metaEl.innerHTML += `<span class="meta-chip">${c.k}: ${c.v}</span>`;
+      });
+    }
+
+    // Confidence meter
+    const pct = Math.round(confidence * 100);
+    document.getElementById('confValue').textContent = pct + '%';
+    setTimeout(() => {
+      document.getElementById('confFill').style.width = pct + '%';
+    }, 100);
+
+    // Probabilities chart
+    renderChart(class_probabilities);
+
+    // Computed features grid
+    if (computed) {
+      const grid = document.getElementById('computedGrid');
+      grid.innerHTML = `
+        <div class="computed-item">
+          <div class="computed-item-label">BMI</div>
+          <div class="computed-item-value">${computed.bmi.toFixed(2)}</div>
+        </div>
+        <div class="computed-item">
+          <div class="computed-item-label">Age Group</div>
+          <div class="computed-item-value">${computed.age_group.replace(/_/g, ' ')}</div>
+        </div>
+        <div class="computed-item">
+          <div class="computed-item-label">Lifestyle Risk</div>
+          <div class="computed-item-value">${computed.lifestyle_risk}</div>
+        </div>
+        <div class="computed-item">
+          <div class="computed-item-label">City Tier</div>
+          <div class="computed-item-value">Tier ${computed.city_tier}</div>
+        </div>
+      `;
+    }
+  }
+
+  /* ─── Chart.js Horizontal Bar ────────────────────────────────────────────── */
+  function renderChart(classProbs) {
+    const labels = Object.keys(classProbs);
+    const values = Object.values(classProbs).map(v => Math.round(v * 10000) / 100);
+
+    const colors = labels.map(l => {
+      const lo = l.toLowerCase();
+      if (lo.includes('low'))    return 'rgba(52,211,153,0.8)';
+      if (lo.includes('medium')) return 'rgba(251,191,36,0.8)';
+      if (lo.includes('high'))   return 'rgba(248,113,113,0.8)';
+      if (lo.includes('ultra'))  return 'rgba(220,38,38,0.8)';
+      return 'rgba(129,140,248,0.8)';
+    });
+
+    const ctx = document.getElementById('probChart').getContext('2d');
+
+    if (probChartInstance) probChartInstance.destroy();
+
+    probChartInstance = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [{
+          data: values,
+          backgroundColor: colors,
+          borderColor: colors.map(c => c.replace('0.8', '1')),
+          borderWidth: 1,
+          borderRadius: 6,
+        }],
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: { duration: 800, easing: 'easeOutQuart' },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: ctx => ` ${ctx.parsed.x.toFixed(2)}%`,
+            },
+            backgroundColor: 'rgba(15,15,40,0.9)',
+            titleColor: '#e2e8f0',
+            bodyColor: '#94a3b8',
+            borderColor: 'rgba(99,102,241,0.3)',
+            borderWidth: 1,
+            padding: 10,
+          },
+        },
+        scales: {
+          x: {
+            max: 100,
+            grid: { color: 'rgba(255,255,255,0.05)' },
+            ticks: {
+              color: '#475569',
+              font: { size: 11, family: 'Inter' },
+              callback: v => v + '%',
+            },
+          },
+          y: {
+            grid: { display: false },
+            ticks: { color: '#94a3b8', font: { size: 11, family: 'Inter' } },
+          },
+        },
+      },
+    });
+  }
+</script>
+</body>
+</html>
+"""
+
+app = FastAPI(title="Insurance Premium Predictor", version="1.0.0")
 app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    CORSMiddleware, allow_origins=["*"], allow_credentials=True,
+    allow_methods=["*"], allow_headers=["*"],
 )
 
-# ── City tier lists ─────────────────────────────────────────────────────────────
-tier_1_cities = ["Mumbai", "Delhi", "Bangalore", "Chennai", "Kolkata", "Hyderabad", "Pune"]
+tier_1_cities = ["Mumbai","Delhi","Bangalore","Chennai","Kolkata","Hyderabad","Pune"]
 tier_2_cities = [
-    "Jaipur", "Chandigarh", "Indore", "Lucknow", "Patna", "Ranchi", "Visakhapatnam",
-    "Coimbatore", "Bhopal", "Nagpur", "Vadodara", "Surat", "Rajkot", "Jodhpur",
-    "Raipur", "Amritsar", "Varanasi", "Agra", "Dehradun", "Mysore", "Jabalpur",
-    "Guwahati", "Thiruvananthapuram", "Ludhiana", "Nashik", "Allahabad", "Udaipur",
-    "Aurangabad", "Hubli", "Belgaum", "Salem", "Vijayawada", "Tiruchirappalli",
-    "Bhavnagar", "Gwalior", "Dhanbad", "Bareilly", "Aligarh", "Gaya", "Kozhikode",
-    "Warangal", "Kolhapur", "Bilaspur", "Jalandhar", "Noida", "Guntur", "Asansol", "Siliguri",
+    "Jaipur","Chandigarh","Indore","Lucknow","Patna","Ranchi","Visakhapatnam",
+    "Coimbatore","Bhopal","Nagpur","Vadodara","Surat","Rajkot","Jodhpur",
+    "Raipur","Amritsar","Varanasi","Agra","Dehradun","Mysore","Jabalpur",
+    "Guwahati","Thiruvananthapuram","Ludhiana","Nashik","Allahabad","Udaipur",
+    "Aurangabad","Hubli","Belgaum","Salem","Vijayawada","Tiruchirappalli",
+    "Bhavnagar","Gwalior","Dhanbad","Bareilly","Aligarh","Gaya","Kozhikode",
+    "Warangal","Kolhapur","Bilaspur","Jalandhar","Noida","Guntur","Asansol","Siliguri",
 ]
 
-
-# ── Pydantic input model ────────────────────────────────────────────────────────
 class UserInput(BaseModel):
     age: Annotated[int, Field(..., gt=0, lt=120)]
     weight: Annotated[float, Field(..., gt=0)]
@@ -56,96 +1046,70 @@ class UserInput(BaseModel):
     smoker: Annotated[bool, Field(...)]
     city: Annotated[str, Field(...)]
     occupation: Annotated[
-        Literal["retired", "freelancer", "student", "government_job",
-                "business_owner", "unemployed", "private_job"],
-        Field(...),
-    ]
+        Literal["retired","freelancer","student","government_job",
+                "business_owner","unemployed","private_job"], Field(...)]
 
     @computed_field
     @property
-    def bmi(self) -> float:
-        return round(self.weight / (self.height ** 2), 4)
+    def bmi(self) -> float: return round(self.weight/(self.height**2), 4)
 
     @computed_field
     @property
     def lifestyle_risk(self) -> str:
-        if self.smoker and self.bmi > 30:
-            return "high"
-        elif self.smoker or self.bmi > 27:
-            return "medium"
+        if self.smoker and self.bmi > 30: return "high"
+        elif self.smoker or self.bmi > 27: return "medium"
         return "low"
 
     @computed_field
     @property
     def age_group(self) -> str:
-        if self.age < 25:
-            return "young"
-        elif self.age < 45:
-            return "adult"
-        elif self.age < 60:
-            return "middle_aged"
+        if self.age < 25: return "young"
+        elif self.age < 45: return "adult"
+        elif self.age < 60: return "middle_aged"
         return "senior"
 
     @computed_field
     @property
     def city_tier(self) -> int:
-        if self.city in tier_1_cities:
-            return 1
-        elif self.city in tier_2_cities:
-            return 2
+        if self.city in tier_1_cities: return 1
+        elif self.city in tier_2_cities: return 2
         return 3
 
 
-# ── Routes ──────────────────────────────────────────────────────────────────────
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)
 def serve_frontend():
     return HTMLResponse(content=_FRONTEND_HTML)
 
 
-@app.get("/health", tags=["System"])
+@app.get("/health")
 def health_check():
     return {"status": "ok", "service": "InsureIQ", "version": "1.0.0"}
 
 
-@app.get("/city-tier/{city}", tags=["Utilities"])
+@app.get("/city-tier/{city}")
 def get_city_tier(city: str):
-    if city in tier_1_cities:
-        tier = 1
-    elif city in tier_2_cities:
-        tier = 2
-    else:
-        tier = 3
+    if city in tier_1_cities: tier = 1
+    elif city in tier_2_cities: tier = 2
+    else: tier = 3
     return {"city": city, "tier": tier}
 
 
-@app.post("/predict", tags=["ML"])
+@app.post("/predict")
 def predict_premium(data: UserInput):
     input_df = pd.DataFrame([{
-        "bmi": data.bmi,
-        "age_group": data.age_group,
-        "lifestyle_risk": data.lifestyle_risk,
-        "city_tier": data.city_tier,
-        "income_lpa": data.income_lpa,
-        "occupation": data.occupation,
+        "bmi": data.bmi, "age_group": data.age_group,
+        "lifestyle_risk": data.lifestyle_risk, "city_tier": data.city_tier,
+        "income_lpa": data.income_lpa, "occupation": data.occupation,
     }])
-
     prediction = model.predict(input_df)[0]
     proba = model.predict_proba(input_df)[0]
     classes = model[-1].classes_
-
     confidence = float(max(proba))
-    class_probabilities = {str(cls): round(float(p), 4) for cls, p in zip(classes, proba)}
-
-    return JSONResponse(status_code=200, content={
-        "response": {
-            "predicted_category": str(prediction),
-            "confidence": round(confidence, 4),
-            "class_probabilities": class_probabilities,
-            "computed": {
-                "bmi": data.bmi,
-                "age_group": data.age_group,
-                "lifestyle_risk": data.lifestyle_risk,
-                "city_tier": data.city_tier,
-            },
-        }
-    })
+    class_probabilities = {str(c): round(float(p), 4) for c, p in zip(classes, proba)}
+    return JSONResponse(status_code=200, content={"response": {
+        "predicted_category": str(prediction),
+        "confidence": round(confidence, 4),
+        "class_probabilities": class_probabilities,
+        "computed": {"bmi": data.bmi, "age_group": data.age_group,
+                     "lifestyle_risk": data.lifestyle_risk, "city_tier": data.city_tier},
+    }})
